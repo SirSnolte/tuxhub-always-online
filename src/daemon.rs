@@ -53,8 +53,8 @@ impl Output for Device {
 }
 
 type Factory = Box<dyn FnMut(Impulse) -> io::Result<Box<dyn Output>>>;
-/// The local day and time, and a monotonic time that also counts the time the
-/// computer was suspended.
+/// The local day and time, and a monotonic time that does not count the time
+/// the computer was suspended, so a night in standby is not part of a run.
 type Clock = Box<dyn Fn() -> (Moment, Duration)>;
 
 enum Msg {
@@ -65,7 +65,7 @@ enum Msg {
         params: Value,
         reply: Sender<Result<Value, Failure>>,
     },
-    /// The access setup has ended.
+    /// The access setup has ended; wakes the loop.
     SetupDone,
     Terminate,
 }
@@ -139,22 +139,29 @@ fn file_id(path: &PathBuf) -> Option<(u64, u64)> {
     std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
 }
 
-/// The local day and time from the system clock, and the boot time.
+/// The local day and time from the system clock, and the monotonic time.
 fn real_clock() -> (Moment, Duration) {
     let mut ts = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
     };
     // SAFETY: `ts` is a valid timespec that the call fills in.
-    unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
-    let boot = Duration::new(
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    let monotonic = Duration::new(
         ts.tv_sec.max(0) as u64,
         ts.tv_nsec.clamp(0, 999_999_999) as u32,
     );
 
     // SAFETY: `time` accepts a null pointer; `tm` is zeroed and then filled
-    // in by `localtime_r`, which only reads `secs`.
+    // in by `localtime_r`, which only reads `secs`. `localtime_r` does not look
+    // at the time zone again after the first call, so a service that runs for
+    // weeks would miss a change in the system settings; `tzset` does.
     let local = unsafe {
+        unsafe extern "C" {
+            // From the C library; the `libc` crate does not declare it.
+            fn tzset();
+        }
+        tzset();
         let secs = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
         (!libc::localtime_r(&secs, &mut tm).is_null()).then_some(tm)
@@ -165,7 +172,7 @@ fn real_clock() -> (Moment, Duration) {
             weekday: 0,
             minute: 0,
         });
-    (moment, boot)
+    (moment, monotonic)
 }
 
 /// `tm_wday` counts from Sunday (0), the schedule from Monday (0).
@@ -325,7 +332,9 @@ impl Service {
                     }
                     let _ = reply.send(self.request(client, &method, params));
                 }
-                Ok(Msg::SetupDone) => self.setup_done(),
+                // The setup ended: the loop goes on to the next tick at once,
+                // which tries the device again.
+                Ok(Msg::SetupDone) => {}
                 Err(RecvTimeoutError::Timeout) => {}
             }
             wake = self.tick();
@@ -366,6 +375,9 @@ impl Service {
                 Ok(device) => self.device = Some(device),
                 Err(e) => {
                     self.error = Some(e.to_string());
+                    // Try again at the next wake-up, not only after a whole
+                    // interval: access may come back at any time.
+                    self.engine.retry();
                     return;
                 }
             }
@@ -381,6 +393,7 @@ impl Service {
             Err(e) => {
                 self.error = Some(e.to_string());
                 self.device = None;
+                self.engine.retry();
             }
         }
     }
@@ -449,11 +462,6 @@ impl Service {
         }
         self.clients.notify("config", json!(self.cfg));
         Ok(())
-    }
-
-    fn setup_done(&mut self) {
-        self.error = None;
-        self.engine.retry();
     }
 
     /// Sends one impulse of the chosen kind, whatever the state. Uses a device
@@ -537,6 +545,8 @@ mod tests {
     struct World {
         log: RefCell<Vec<String>>,
         fail_create: Cell<Option<&'static str>>,
+        /// How often the service tried to create the device.
+        attempts: Cell<u32>,
         fail_send: Cell<bool>,
         time: Cell<(Moment, Duration)>,
     }
@@ -546,6 +556,7 @@ mod tests {
             Rc::new(Self {
                 log: RefCell::default(),
                 fail_create: Cell::new(None),
+                attempts: Cell::new(0),
                 fail_send: Cell::new(false),
                 time: Cell::new((at(0, 12, 0), Duration::ZERO)),
             })
@@ -607,6 +618,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let (w1, w2) = (world.clone(), world.clone());
         let factory: Factory = Box::new(move |kind| {
+            w1.attempts.set(w1.attempts.get() + 1);
             if let Some(why) = w1.fail_create.get() {
                 return Err(io::Error::new(io::ErrorKind::PermissionDenied, why));
             }
@@ -670,12 +682,50 @@ mod tests {
         assert_eq!(moment_from_tm(1, -1, 0), None);
     }
 
+    /// Milliseconds of `clock` as the kernel reports it.
+    fn kernel_clock_ms(clock: libc::clockid_t) -> u128 {
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        unsafe { libc::clock_gettime(clock, &mut ts) };
+        Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32).as_millis()
+    }
+
+    #[test]
+    fn the_real_clock_does_not_count_the_time_the_computer_slept() {
+        // CLOCK_BOOTTIME runs on during suspend, CLOCK_MONOTONIC does not. A
+        // computer that slept before this test shows the difference; one that
+        // never did cannot tell them apart.
+        let ms = real_clock().1.as_millis();
+        let monotonic = kernel_clock_ms(libc::CLOCK_MONOTONIC);
+        assert!(
+            ms.abs_diff(monotonic) < 100,
+            "{ms} ms against {monotonic} ms"
+        );
+    }
+
+    /// Changes the time zone of this process, as the system settings do.
+    /// Runs alone: tests run with `--test-threads=1`.
+    #[test]
+    fn the_real_clock_follows_a_changed_time_zone() {
+        // POSIX zone strings count east of Greenwich as negative.
+        unsafe { std::env::set_var("TZ", "UTC0") };
+        let before = real_clock().0;
+        unsafe { std::env::set_var("TZ", "UTC-14") };
+        let after = real_clock().0;
+        unsafe { std::env::remove_var("TZ") };
+        // 14 hours later in the day, give or take a minute rolling over.
+        let shift = (after.minute + 1440 - before.minute) % 1440;
+        assert!((839..=841).contains(&shift), "{before:?} then {after:?}");
+    }
+
     #[test]
     fn the_real_clock_is_plausible() {
         let (local, boot) = real_clock();
         assert!(local.weekday < 7 && local.minute < 1440);
         assert!(boot > Duration::ZERO);
-        // The boot time never runs backwards.
+        // The monotonic time never runs backwards.
         assert!(real_clock().1 >= boot);
     }
 
@@ -783,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_access_is_reported_and_tried_again() {
+    fn missing_access_is_reported_and_tried_again_at_every_wake_up() {
         let world = World::new();
         world.fail_create.set(Some("no access to /dev/uinput"));
         let (mut s, _rx) = service(&world, cfg(json!({ "enabled": true, "interval_s": 240 })));
@@ -797,13 +847,15 @@ mod tests {
                 .contains("/dev/uinput")
         );
         assert_eq!(status["sent"], 0);
-        // Still failing at the next impulse; the service keeps going.
-        world.advance(240);
+        assert_eq!(world.attempts.get(), 1);
+        // Still failing at the next wake-up; the service keeps going.
+        world.advance(30);
         s.tick();
         assert_eq!(s.status()["state"], "no_access");
-        // Access is granted: the next impulse works and clears the problem.
+        assert_eq!(world.attempts.get(), 2);
+        // Access is granted: the next wake-up works and clears the problem.
         world.fail_create.set(None);
-        world.advance(240);
+        world.advance(30);
         s.tick();
         let status = s.status();
         assert_eq!(
@@ -811,24 +863,22 @@ mod tests {
             (Some("sending"), Some(1))
         );
         assert_eq!(status["last_error"], Value::Null);
+        assert_eq!(world.attempts.get(), 3);
+        // Back to the normal pace: nothing more before the interval is over.
+        world.advance(30);
+        s.tick();
+        assert_eq!(world.attempts.get(), 3);
     }
 
     #[test]
-    fn finishing_the_setup_tries_at_once() {
+    fn access_that_comes_back_is_noticed_long_before_a_long_interval_is_over() {
         let world = World::new();
         world.fail_create.set(Some("denied"));
         let (mut s, _rx) = service(&world, cfg(json!({ "enabled": true, "interval_s": 1800 })));
         s.tick();
         assert_eq!(s.status()["state"], "no_access");
         world.fail_create.set(None);
-        world.advance(5);
-        s.tick();
-        assert_eq!(
-            s.status()["state"],
-            "no_access",
-            "not before the next impulse"
-        );
-        s.setup_done();
+        world.advance(30);
         s.tick();
         assert_eq!(s.status()["state"], "sending");
         assert_eq!(world.take_log(), ["create key", "send"]);

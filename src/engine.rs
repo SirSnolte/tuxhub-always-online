@@ -80,7 +80,7 @@ impl Engine {
         Some(due.saturating_sub(now))
     }
 
-    /// Decides what happens at `now` (monotonic, counting suspended time)
+    /// Decides what happens at `now` (monotonic, without suspended time)
     /// and `local` (local day and time).
     pub fn step(&mut self, cfg: &Config, local: Moment, now: Duration) -> Decision {
         if !cfg.enabled {

@@ -166,14 +166,18 @@ function showError(e) {
   $("error").textContent = e ? String(e.message ?? e) : "";
 }
 
+/** Applies a change. Resolves to true if the service accepted it. */
 async function update(patch) {
   showError(null);
+  let ok = true;
   try {
     config = await tuxhub.call("config.set", patch);
   } catch (e) {
     showError(e);
+    ok = false;
   }
   render();
+  return ok;
 }
 
 // ----------------------------------------------------------------- Helpers
@@ -409,8 +413,7 @@ async function quickSchedule(make) {
   const before = config.schedule;
   drafts.clear();
   dayErrors.clear();
-  await update({ schedule: make(before) });
-  undoSchedule = before;
+  if (await update({ schedule: make(before) })) undoSchedule = before;
   renderWeek();
 }
 
