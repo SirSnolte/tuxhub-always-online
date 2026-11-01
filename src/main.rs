@@ -1,10 +1,11 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io;
-use tuxhub_always_online::{client, daemon, impulse, integration};
+use tuxhub_always_online::{client, daemon, impulse, integration, window};
 
 /// Keeps Discord, Steam and other apps from setting you to away while you are
 /// at the computer, by sending a harmless input event at a fixed interval.
+/// Without a command, the window opens.
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
@@ -43,7 +44,7 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
-        None => Cli::command().print_help(),
+        None => window::run(),
         Some(cmd) => run(cmd),
     };
     if let Err(e) = result {

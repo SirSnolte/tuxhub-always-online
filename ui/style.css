@@ -1,0 +1,157 @@
+/* Layout of Always Online. Colors, controls and base styles come from Web
+   Awesome and theme.css; only what is specific to this interface is here. */
+
+/* The body scrolls instead of the document: WebKitGTK draws a stray pixel
+   at the top left of an embedded page whose document scrolls. */
+html {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  height: 100%;
+  overflow-y: auto;
+  background: transparent;
+}
+
+/* The standalone window has no surrounding tuxhub page. */
+:root[data-standalone] body {
+  background: var(--wa-color-surface-lowered);
+}
+
+main {
+  max-width: 760px;
+  /* Inside tuxhub the page sits in the tool area, which has the margin. The
+     small padding leaves room for the card shadows; tuxhub pulls the frame out
+     by the same amount. */
+  padding: var(--wa-space-2xs);
+  gap: var(--tuxhub-card-gap);
+}
+:root[data-standalone] main {
+  margin-inline: auto;
+  padding: var(--tuxhub-page-margin);
+}
+
+.error {
+  color: var(--wa-color-danger-on-quiet);
+}
+.error:empty {
+  display: none;
+}
+.footer {
+  font-size: var(--wa-font-size-xs);
+}
+
+/* Status */
+.hero {
+  transition:
+    background-color var(--wa-transition-normal),
+    border-color var(--wa-transition-normal);
+}
+.hero > .wa-split,
+.hero-main {
+  flex-wrap: nowrap;
+}
+.hero-main {
+  min-width: 0;
+}
+.hero h1 {
+  font-size: var(--wa-font-size-l);
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--wa-color-neutral-fill-loud);
+  transition:
+    background-color var(--wa-transition-normal),
+    box-shadow var(--wa-transition-normal);
+}
+.hero[data-state="sending"] .dot {
+  background: var(--wa-color-brand-fill-loud);
+  box-shadow: 0 0 0 4px var(--wa-color-brand-fill-normal);
+}
+.hero[data-state="paused"] .dot,
+.hero[data-state="outside"] .dot {
+  background: var(--wa-color-warning-fill-loud);
+}
+.hero[data-state="no_access"] {
+  background-color: var(--wa-color-danger-fill-quiet);
+  border-color: var(--wa-color-danger-border-normal);
+}
+.hero[data-state="no_access"] .dot {
+  background: var(--wa-color-danger-fill-loud);
+  box-shadow: 0 0 0 4px var(--wa-color-danger-fill-normal);
+}
+
+/* Weekly schedule: one row per weekday with its window and a 24-hour bar. */
+.week {
+  border: var(--wa-border-width-s) solid var(--wa-color-surface-border);
+  border-radius: var(--wa-border-radius-m);
+  transition: opacity var(--wa-transition-normal);
+}
+.week[data-off] {
+  opacity: 0.55;
+}
+.day {
+  display: grid;
+  /* Narrow: the name on its own line, then the times and the bar. */
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wa-space-xs) var(--wa-space-m);
+  padding: var(--wa-space-s) var(--wa-space-m);
+}
+.day .name {
+  grid-column: 1 / -1;
+}
+.day + .day {
+  border-top: var(--wa-border-width-s) solid var(--wa-color-surface-border);
+}
+.day[data-today] {
+  background: var(--wa-color-brand-fill-quiet);
+}
+.day[data-today] .name::part(label) {
+  font-weight: var(--wa-font-weight-semibold);
+}
+.day .times {
+  display: flex;
+  align-items: center;
+  gap: var(--wa-space-xs);
+}
+.day .times wa-input {
+  width: 7.75rem;
+}
+.bar {
+  position: relative;
+  height: 8px;
+  border-radius: var(--wa-border-radius-pill);
+  background: var(--wa-color-neutral-fill-normal);
+  overflow: hidden;
+}
+.bar .seg {
+  position: absolute;
+  inset-block: 0;
+  background: var(--wa-color-brand-fill-loud);
+}
+.day-error {
+  grid-column: 1 / -1;
+  color: var(--wa-color-danger-on-quiet);
+  font-size: var(--wa-font-size-s);
+}
+.day-error:empty {
+  display: none;
+}
+@media (min-width: 640px) {
+  .day {
+    grid-template-columns: 11rem auto minmax(0, 1fr);
+  }
+  .day .name {
+    grid-column: auto;
+  }
+}
+
+/* The switch keeps its label on one line; the text next to it gives way. */
+#enabled {
+  flex: none;
+  white-space: nowrap;
+}

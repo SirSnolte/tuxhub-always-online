@@ -11,6 +11,8 @@ use crate::{client, paths};
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Name shown in window titles and messages.
+pub const DISPLAY_NAME: &str = "Always Online";
 pub const APP_ID: &str = "io.github.sirsnolte.TuxhubAlwaysOnline";
 pub const TOOL_ID: &str = "always-online";
 pub const EXE_NAME: &str = "tuxhub-always-online";

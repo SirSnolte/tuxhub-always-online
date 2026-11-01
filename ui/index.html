@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" class="wa-cloak">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Always Online</title>
+    <link rel="stylesheet" href="vendor/webawesome.css" />
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="vendor/webawesome.js"></script>
+    <script src="/__tuxhub/bridge.js"></script>
+  </head>
+  <body>
+    <main class="wa-stack">
+      <wa-callout variant="warning" class="hidden" id="problem">
+        <div class="wa-stack wa-gap-xs">
+          <span id="problem-text"></span>
+          <div>
+            <wa-button size="s" class="hidden" id="setup" data-i18n="problem.setup"></wa-button>
+          </div>
+        </div>
+      </wa-callout>
+
+      <p class="error" id="error" role="alert"></p>
+
+      <wa-card class="hero" id="hero">
+        <div class="wa-split">
+          <div class="hero-main wa-cluster wa-gap-m wa-align-items-center">
+            <span class="dot" id="dot" aria-hidden="true"></span>
+            <div class="wa-stack wa-gap-3xs">
+              <h1 id="state-title"></h1>
+              <p class="muted" id="state-detail"></p>
+            </div>
+          </div>
+          <wa-switch id="enabled" data-i18n="enabled"></wa-switch>
+        </div>
+      </wa-card>
+
+      <wa-card>
+        <div class="wa-stack wa-gap-s">
+          <div class="wa-split">
+            <h2 data-i18n="schedule.title"></h2>
+            <wa-switch id="schedule-enabled" data-i18n="schedule.use"></wa-switch>
+          </div>
+          <p class="muted" id="schedule-help"></p>
+          <div class="week" id="week"></div>
+          <div class="wa-cluster wa-gap-xs">
+            <wa-button size="s" appearance="outlined" id="copy-monday" data-i18n="schedule.copyMonday"></wa-button>
+            <wa-button size="s" appearance="outlined" id="weekdays" data-i18n="schedule.weekdays"></wa-button>
+            <wa-button size="s" appearance="outlined" id="all-day" data-i18n="schedule.allDay"></wa-button>
+            <wa-button size="s" appearance="plain" class="hidden" id="undo" data-i18n="schedule.undo"></wa-button>
+          </div>
+        </div>
+      </wa-card>
+
+      <wa-card>
+        <h2 data-i18n="options.title"></h2>
+        <wa-input class="setting" type="number" without-spin-buttons id="interval" min="30" max="1800" step="10">
+          <span slot="label" data-i18n="interval.label"></span>
+          <span slot="hint" id="interval-help"></span>
+          <span slot="end" class="muted">s</span>
+        </wa-input>
+        <wa-select class="setting" id="impulse">
+          <span slot="label" data-i18n="impulse.label"></span>
+          <span slot="hint" id="impulse-help"></span>
+          <wa-option value="key" data-i18n="impulse.key"></wa-option>
+          <wa-option value="mouse" data-i18n="impulse.mouse"></wa-option>
+        </wa-select>
+        <wa-input class="setting" type="number" without-spin-buttons id="max-hours" min="0" max="24" step="1">
+          <span slot="label" data-i18n="max.label"></span>
+          <span slot="hint" data-i18n="max.help"></span>
+          <span slot="end" class="muted">h</span>
+        </wa-input>
+        <wa-switch class="setting" id="login">
+          <span data-i18n="login.label"></span>
+          <span slot="hint" data-i18n="login.help"></span>
+        </wa-switch>
+      </wa-card>
+
+      <wa-card>
+        <div class="wa-stack wa-gap-s">
+          <h2 data-i18n="test.title"></h2>
+          <p class="muted" data-i18n="test.help"></p>
+          <div class="wa-cluster wa-gap-s wa-align-items-center">
+            <wa-button appearance="outlined" id="test" data-i18n="test.button"></wa-button>
+            <span class="muted" id="test-result" role="status"></span>
+          </div>
+        </div>
+      </wa-card>
+
+      <wa-callout variant="neutral" id="hints">
+        <div class="wa-stack wa-gap-2xs">
+          <span data-i18n="hint.lock"></span>
+          <span data-i18n="hint.cheat"></span>
+        </div>
+      </wa-callout>
+
+      <p class="muted footer" id="footer"></p>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
