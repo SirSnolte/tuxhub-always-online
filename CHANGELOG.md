@@ -4,7 +4,7 @@ All notable changes are documented in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-01
 
 Requires tuxhub 0.7.0 or newer to be used inside tuxhub.
 
