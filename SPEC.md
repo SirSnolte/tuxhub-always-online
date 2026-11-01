@@ -66,6 +66,8 @@ Geräte-Name `tuxhub-always-online`, Socket `$XDG_RUNTIME_DIR/tuxhub/always-onli
 `schedule`-Eintrag: `{"on": bool, "from": "HH:MM", "to": "HH:MM"}`. Standard für alle 7 Tage:
 `on = true`, `08:00`–`23:00`. `from`/`to` sind lokale Zeit 00:00–23:59, `from != to`. Ist `from > to`, reicht das
 Fenster über Mitternacht in den Folgetag (22:00–01:00). `on = false` heißt: an diesem Tag nie.
+Das Ende ist ausgeschlossen (08:00–23:00 gilt bis 22:59), mit einer Ausnahme: `to = 23:59` heißt „bis Tagesende“,
+damit 00:00–23:59 ohne Lücke um Mitternacht durchläuft.
 Unbekannte Schlüssel, falsche Typen, Werte außerhalb des Bereichs → Fehler mit Feldnamen; eine kaputte
 Datei auf der Platte wird beim Laden still auf Standardwerte je Feld repariert (wie Push-to-Mute).
 
