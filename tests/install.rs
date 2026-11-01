@@ -122,6 +122,13 @@ impl Env {
         }
     }
 
+    /// Sends a request and does not wait for the answer.
+    fn nudge(&self) {
+        let stream = UnixStream::connect(self.socket()).unwrap();
+        let mut w = &stream;
+        writeln!(w, r#"{{"id":1,"method":"status"}}"#).unwrap();
+    }
+
     fn wait_for_service(&self) {
         assert!(
             wait_until(Duration::from_secs(5), || UnixStream::connect(
@@ -419,7 +426,9 @@ fn the_service_restarts_after_an_update() {
     std::fs::rename(&next, env.dest().join(EXE_NAME)).unwrap();
 
     // The service looks at the executable whenever it wakes up; any request does.
-    let _ = env.call("status", json!({}));
+    // It restarts right after it has answered, so the answer may be cut off:
+    // the request is only a nudge here and its reply is not read.
+    env.nudge();
     assert!(
         wait_until(Duration::from_secs(10), || {
             std::fs::metadata(env.socket()).is_ok_and(|m| m.ino() != before)
