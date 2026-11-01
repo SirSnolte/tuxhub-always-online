@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io;
-use tuxhub_always_online::{client, daemon, impulse};
+use tuxhub_always_online::{client, daemon, impulse, integration};
 
 /// Keeps Discord, Steam and other apps from setting you to away while you are
 /// at the computer, by sending a harmless input event at a fixed interval.
@@ -26,6 +26,18 @@ enum Command {
     Test,
     /// Grant access to /dev/uinput once (asks for the administrator password)
     Setup,
+    /// Install for the current user from the extracted release folder
+    Install {
+        /// Install even if tuxhub already manages an installation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Remove the installation, the launcher and the login entry
+    Uninstall {
+        /// Also remove the settings
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 fn main() {
@@ -59,6 +71,23 @@ fn run(cmd: Command) -> io::Result<()> {
         Command::Setup => {
             impulse::setup_access()?;
             println!("Access to /dev/uinput is set up.");
+            Ok(())
+        }
+        Command::Install { force } => {
+            let dir = integration::install(force)?;
+            println!("Installed to {}.", dir.display());
+            println!("Always Online is in the application menu and starts at login.");
+            println!(
+                "It stays off until you switch it on; run `{} on` or use the window.",
+                integration::EXE_NAME
+            );
+            println!("tuxhub detects this installation automatically.");
+            Ok(())
+        }
+        Command::Uninstall { purge } => {
+            for path in integration::uninstall(purge)? {
+                println!("Removed {}", path.display());
+            }
             Ok(())
         }
     }

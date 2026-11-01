@@ -1,0 +1,31 @@
+# Integration with tuxhub (live interface, requires tuxhub 0.7.0 or newer).
+# See https://github.com/SirSnolte/tuxhub
+#
+# The settings live in the tool's own background service, so tuxhub, the
+# tool's window and the command line always show the same state. tuxhub
+# starts the service when needed and talks to it over its live socket. The
+# interface in ui/ is localized and runs both in tuxhub and in the window.
+# The manifest only declares the actions and their default hotkeys.
+
+id = "always-online"
+name = "Always Online"
+version = "0.1.0"
+description = "Keeps Discord, Steam and other apps from setting you to away while you are at the computer."
+icon = "assets/icon.svg"
+
+ui = "ui/index.html"
+
+[run]
+command = "tuxhub-always-online"
+
+[live]
+command = "tuxhub-always-online"
+args = ["daemon"]
+
+[uninstall]
+command = "tuxhub-always-online"
+args = ["uninstall"]
+
+[[actions]]
+id = "toggle"
+label = "Switch Keep me online on or off"

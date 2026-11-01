@@ -6,6 +6,7 @@ pub mod config;
 pub mod daemon;
 pub mod engine;
 pub mod impulse;
+pub mod integration;
 pub mod live;
 pub mod paths;
 pub mod schedule;

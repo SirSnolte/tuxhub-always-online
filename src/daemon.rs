@@ -14,6 +14,7 @@
 use crate::config::{Config, Impulse};
 use crate::engine::{Engine, State};
 use crate::impulse::{self, Device};
+use crate::integration;
 use crate::live::{self, Failure};
 use crate::paths;
 use crate::schedule::{self, Moment};
@@ -90,6 +91,9 @@ pub fn run() -> io::Result<bool> {
     }
 
     let cfg = Config::load();
+    if let Err(e) = integration::refresh(&cfg) {
+        eprintln!("desktop integration: {e}");
+    }
     let clients = Clients::default();
     {
         let (clients, tx) = (clients.clone(), tx.clone());
@@ -106,12 +110,33 @@ pub fn run() -> io::Result<bool> {
         Box::new(real_clock),
         Some(Config::path()?),
     );
-    service.run(rx);
+    let restart = service.run(rx);
+    let exe = service.exe.take();
     // Removes the virtual device before the socket disappears.
     drop(service);
     let _ = std::fs::remove_file(&socket);
     drop(lock);
+    if restart {
+        exec_self(exe.as_ref().map(|(p, _)| p));
+    }
     Ok(true)
+}
+
+/// Replaces the process with the current executable, after an update.
+/// `path` is the executable as it was at start. `current_exe()` cannot be
+/// used here: after an update it names the deleted old file.
+fn exec_self(path: Option<&PathBuf>) {
+    use std::os::unix::process::CommandExt;
+    if let Some(exe) = path {
+        let err = std::process::Command::new(exe).arg("daemon").exec();
+        eprintln!("could not restart after an update: {err}");
+    }
+}
+
+/// Device and inode of a file, to detect when an update replaced it.
+fn file_id(path: &PathBuf) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
 }
 
 /// The local day and time from the system clock, and the boot time.
@@ -249,6 +274,8 @@ struct Service {
     sent: u64,
     /// The status as last published, without the countdowns.
     published: Value,
+    /// The executable as it was at start, to notice an update.
+    exe: Option<(PathBuf, (u64, u64))>,
 }
 
 impl Service {
@@ -272,16 +299,20 @@ impl Service {
             error: None,
             sent: 0,
             published: Value::Null,
+            exe: std::env::current_exe()
+                .ok()
+                .and_then(|p| Some((p.clone(), file_id(&p)?))),
         }
     }
 
-    /// Processes messages until the service ends.
-    fn run(&mut self, rx: Receiver<Msg>) {
+    /// Processes messages until the service ends. Returns true if the
+    /// executable was replaced and the service should restart itself.
+    fn run(&mut self, rx: Receiver<Msg>) -> bool {
         let mut wake = self.tick();
         self.publish_status();
         loop {
             match rx.recv_timeout(wake) {
-                Ok(Msg::Terminate) | Err(RecvTimeoutError::Disconnected) => return,
+                Ok(Msg::Terminate) | Err(RecvTimeoutError::Disconnected) => return false,
                 Ok(Msg::Request {
                     client,
                     method,
@@ -290,7 +321,7 @@ impl Service {
                 }) => {
                     if method == "quit" {
                         let _ = reply.send(Ok(json!(true)));
-                        return;
+                        return false;
                     }
                     let _ = reply.send(self.request(client, &method, params));
                 }
@@ -299,7 +330,18 @@ impl Service {
             }
             wake = self.tick();
             self.publish_status();
+            if self.exe_replaced() {
+                return true;
+            }
         }
+    }
+
+    fn exe_replaced(&self) -> bool {
+        let Some((path, id)) = &self.exe else {
+            return false;
+        };
+        // A missing file means the tool is being removed, not updated.
+        file_id(path).is_some_and(|now| now != *id)
     }
 
     /// Lets the engine decide and does what it says. Returns how long the
@@ -394,6 +436,11 @@ impl Service {
             // The new kind goes out at once, from a new device.
             self.device = None;
             self.engine.retry();
+        }
+        if old.start_at_login != self.cfg.start_at_login
+            && let Err(e) = integration::refresh(&self.cfg)
+        {
+            eprintln!("desktop integration: {e}");
         }
         let values = live::values(&self.cfg);
         if live::values(&old) != values {
