@@ -105,7 +105,10 @@ Ein Dienst pro Nutzer (flock), Fenster, tuxhub und CLI sind Clients desselben So
 | `sending` | `enabled`, im Fenster (oder kein Plan), Höchstdauer nicht erreicht |
 | `no_access` | `sending` wäre fällig, aber das Gerät lässt sich nicht erzeugen oder ein Impuls schlägt fehl |
 
-Im Zustand `sending` kommt der erste Impuls sofort beim Eintritt, danach alle `interval_s` (Monotonuhr).
+Im Zustand `sending` kommt der erste Impuls sofort beim Eintritt, danach alle `interval_s`. Gemessen wird mit
+`CLOCK_BOOTTIME` (zählt die Zeit im Standby mit), die Engine bekommt sie als `Duration`; so ist nach dem Aufwachen
+ein Impuls sofort überfällig. `no_access` ist kein Zustand der Engine, sondern ein Aufsatz des Dienstes: schlägt das
+Senden im Zustand `sending` fehl, meldet er `no_access`, bis ein Impuls wieder klappt.
 `next_wake` = früheste von: nächster Impuls, nächste Planänderung, Höchstdauer; die Schleife schläft aber
 höchstens 30 s am Stück und prüft dann die Uhrzeit neu (Zeitumstellung, NTP, Standby überstehen). Ein
 überfälliger Impuls (z. B. nach Standby) wird sofort gesendet, nie nachgeholt.

@@ -2,5 +2,6 @@
 //! at the computer, by sending a harmless input event at a fixed interval.
 
 pub mod config;
+pub mod engine;
 pub mod paths;
 pub mod schedule;
