@@ -21,6 +21,9 @@ pub const SETTLE: Duration = Duration::from_millis(500);
 /// Time between the two events of an impulse.
 const KEY_HOLD: Duration = Duration::from_millis(20);
 const MOUSE_BACK: Duration = Duration::from_millis(50);
+/// Time the last event needs to reach the readers of the device. A device
+/// that is removed right after its last event can take the event with it.
+const FLUSH: Duration = Duration::from_millis(100);
 
 /// The key of the impulse: no key on common keyboards and no binding in
 /// common desktops or games.
@@ -60,7 +63,7 @@ impl Device {
     }
 
     /// Sends one impulse. Waits first if the device is younger than
-    /// [`SETTLE`], and takes about 20 to 50 ms.
+    /// [`SETTLE`], and takes about 120 to 150 ms.
     pub fn send(&mut self) -> io::Result<()> {
         let wait = SETTLE.saturating_sub(self.created.elapsed());
         if !wait.is_zero() {
@@ -70,14 +73,16 @@ impl Device {
             Impulse::Key => {
                 self.emit(EventType::KEY, KEY.code(), 1)?;
                 std::thread::sleep(KEY_HOLD);
-                self.emit(EventType::KEY, KEY.code(), 0)
+                self.emit(EventType::KEY, KEY.code(), 0)?;
             }
             Impulse::Mouse => {
                 self.emit(EventType::RELATIVE, RelativeAxisCode::REL_X.0, 1)?;
                 std::thread::sleep(MOUSE_BACK);
-                self.emit(EventType::RELATIVE, RelativeAxisCode::REL_X.0, -1)
+                self.emit(EventType::RELATIVE, RelativeAxisCode::REL_X.0, -1)?;
             }
         }
+        std::thread::sleep(FLUSH);
+        Ok(())
     }
 
     /// Emits one event; the library follows it with a sync event.

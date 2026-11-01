@@ -6,6 +6,8 @@
 //! tuxhub tools (CI machines have neither); run them on a desktop machine.
 
 use evdev::{Device as Reader, EventType, KeyCode, RelativeAxisCode};
+use std::mem::ManuallyDrop;
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -16,7 +18,7 @@ use tuxhub_always_online::impulse::{DEVICE_NAME, Device};
 
 /// A device and a grabbed reader on its node.
 struct Setup {
-    device: Device,
+    device: Option<Device>,
     node: PathBuf,
     events: mpsc::Receiver<(EventType, u16, i32)>,
     /// The capabilities seen by the reader.
@@ -82,11 +84,15 @@ fn setup(kind: Impulse) -> Option<Setup> {
                     Err(_) => break,
                 }
             }
-            reader.ungrab().expect("release the grab");
+            // The device may be gone already; a normal drop would complain
+            // that it cannot release the grab then.
+            let mut reader = ManuallyDrop::new(reader);
+            let _ = reader.ungrab();
+            unsafe { libc::close(reader.as_raw_fd()) };
         }
     });
     Some(Setup {
-        device,
+        device: Some(device),
         node,
         events,
         keys,
@@ -94,6 +100,12 @@ fn setup(kind: Impulse) -> Option<Setup> {
         stop,
         reader: Some(handle),
     })
+}
+
+impl Setup {
+    fn dev(&mut self) -> &mut Device {
+        self.device.as_mut().expect("the device is still there")
+    }
 }
 
 /// Opens the event node of the virtual device. Checks the name, so a physical
@@ -145,9 +157,9 @@ fn the_key_impulse_presses_and_releases_f15_and_nothing_else() {
     };
     assert_eq!(s.keys, [KeyCode::KEY_F15]);
     assert!(s.axes.is_empty());
-    assert_eq!(s.device.kind(), Impulse::Key);
+    assert_eq!(s.dev().kind(), Impulse::Key);
 
-    s.device.send().unwrap();
+    s.dev().send().unwrap();
     let f15 = KeyCode::KEY_F15.code();
     assert_eq!(
         collect(&s, 2, Duration::from_secs(2)),
@@ -156,7 +168,7 @@ fn the_key_impulse_presses_and_releases_f15_and_nothing_else() {
     assert!(collect(&s, 1, Duration::from_millis(300)).is_empty());
 
     // Every impulse is the same.
-    s.device.send().unwrap();
+    s.dev().send().unwrap();
     assert_eq!(collect(&s, 2, Duration::from_secs(2)).len(), 2);
 }
 
@@ -167,9 +179,9 @@ fn the_mouse_impulse_moves_one_unit_and_back() {
     };
     assert!(s.keys.is_empty());
     assert_eq!(s.axes, [RelativeAxisCode::REL_X, RelativeAxisCode::REL_Y]);
-    assert_eq!(s.device.kind(), Impulse::Mouse);
+    assert_eq!(s.dev().kind(), Impulse::Mouse);
 
-    s.device.send().unwrap();
+    s.dev().send().unwrap();
     let x = RelativeAxisCode::REL_X.0;
     let got = collect(&s, 2, Duration::from_secs(2));
     assert_eq!(
@@ -187,7 +199,7 @@ fn the_first_impulse_waits_for_the_device_to_settle() {
         return;
     };
     let t = Instant::now();
-    s.device.send().unwrap();
+    s.dev().send().unwrap();
     // Creating the device and finding its node took some of the 500 ms.
     assert!(
         t.elapsed() < tuxhub_always_online::impulse::SETTLE + Duration::from_millis(200),
@@ -196,7 +208,7 @@ fn the_first_impulse_waits_for_the_device_to_settle() {
     );
     // A second impulse does not wait again.
     let t = Instant::now();
-    s.device.send().unwrap();
+    s.dev().send().unwrap();
     assert!(
         t.elapsed() < Duration::from_millis(200),
         "{:?}",
@@ -217,4 +229,31 @@ fn the_device_is_gone_when_it_is_dropped() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(!node.exists(), "{} is still there", node.display());
+}
+
+/// The service drops a device right after a test impulse; the last event must
+/// not be lost with it.
+#[test]
+fn the_last_event_survives_dropping_the_device_right_after_sending() {
+    for (kind, expected) in [
+        (
+            Impulse::Key,
+            [
+                (EventType::KEY, KeyCode::KEY_F15.code(), 1),
+                (EventType::KEY, KeyCode::KEY_F15.code(), 0),
+            ],
+        ),
+        (
+            Impulse::Mouse,
+            [
+                (EventType::RELATIVE, RelativeAxisCode::REL_X.0, 1),
+                (EventType::RELATIVE, RelativeAxisCode::REL_X.0, -1),
+            ],
+        ),
+    ] {
+        let Some(mut s) = setup(kind) else { return };
+        s.dev().send().unwrap();
+        drop(s.device.take());
+        assert_eq!(collect(&s, 2, Duration::from_secs(2)), expected, "{kind:?}");
+    }
 }

@@ -122,6 +122,12 @@ impl Engine {
         }
     }
 
+    /// Makes the next step send an impulse, for example after the device
+    /// was replaced or access was granted.
+    pub fn retry(&mut self) {
+        self.last_impulse = None;
+    }
+
     /// Ends the run and waits for a change of the settings or the time.
     fn idle(&mut self, state: State) -> Decision {
         self.state = state;
@@ -389,6 +395,21 @@ mod tests {
         let tiny = with(&cfg, json!({ "max_hours": 1 }));
         let d = e.step(&tiny, noon(), secs(3702));
         assert_eq!((d.state, d.send), (State::Paused, false));
+    }
+
+    #[test]
+    fn retry_makes_the_next_step_send() {
+        let mut e = Engine::new();
+        let cfg = with(&on(), json!({ "interval_s": 600 }));
+        assert!(e.step(&cfg, noon(), secs(0)).send);
+        assert!(!e.step(&cfg, noon(), secs(10)).send);
+        e.retry();
+        assert!(e.step(&cfg, noon(), secs(11)).send);
+        assert!(!e.step(&cfg, noon(), secs(12)).send);
+        // Without a run there is nothing to retry.
+        let mut e = Engine::new();
+        e.retry();
+        assert!(!e.step(&Config::default(), noon(), secs(0)).send);
     }
 
     #[test]
