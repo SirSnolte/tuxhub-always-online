@@ -8,6 +8,7 @@ authors = ["SirSnolte"]
 repository = "https://github.com/SirSnolte/tuxhub-always-online"
 
 [dependencies]
+evdev = "0.13"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

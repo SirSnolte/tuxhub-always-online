@@ -3,5 +3,6 @@
 
 pub mod config;
 pub mod engine;
+pub mod impulse;
 pub mod paths;
 pub mod schedule;
