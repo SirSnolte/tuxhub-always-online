@@ -293,6 +293,21 @@ impl Drop for Watcher {
     }
 }
 
+/// Whether the tests with a real virtual device can run here: they need to
+/// write to /dev/uinput and to read the new device in /dev/input. CI machines
+/// have neither, as in the other tuxhub tools.
+fn can_test_the_device() -> bool {
+    let uinput = std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/uinput")
+        .is_ok();
+    let input = std::fs::read_dir("/dev/input").is_ok();
+    if !(uinput && input) {
+        eprintln!("skipped: no access to /dev/uinput or /dev/input");
+    }
+    uinput && input
+}
+
 fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     let end = Instant::now() + timeout;
     while Instant::now() < end {
@@ -593,6 +608,9 @@ fn the_command_line_shows_the_state() {
 /// the device; impulses of both kinds and the test command arrive.
 #[test]
 fn impulses_arrive_and_the_device_goes_with_the_switch() {
+    if !can_test_the_device() {
+        return;
+    }
     let env = Env::new("device");
     let _service = env.daemon();
     let watcher = watch();
@@ -653,6 +671,9 @@ fn impulses_arrive_and_the_device_goes_with_the_switch() {
 /// Ending the service removes the device too.
 #[test]
 fn the_device_is_gone_when_the_service_ends() {
+    if !can_test_the_device() {
+        return;
+    }
     let env = Env::new("end");
     let mut service = env.daemon();
     let _watcher = watch();
